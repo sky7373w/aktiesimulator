@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Aktiesimulator</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+--bg:#f4f5f7;--card:#fff;--tx:#14171c;--mu:#6b7280;--ln:#e3e6ea;--gr:#14833b;--rd:#c62828;--ac:#1a56db;--acx:#fff}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0e1116;--card:#181c23;--tx:#eef0f3;--mu:#98a1ae;--ln:#2a303a;--gr:#4cc77a;--rd:#ff6b6b;--ac:#5b8def;--acx:#0b1020}}
+:root[data-theme="dark"]{--bg:#0e1116;--card:#181c23;--tx:#eef0f3;--mu:#98a1ae;--ln:#2a303a;--gr:#4cc77a;--rd:#ff6b6b;--ac:#5b8def;--acx:#0b1020}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:17px/1.4 -apple-system,system-ui,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:900px;margin:0 auto;padding:16px}
+h1{font-size:24px;margin:4px 0 12px}
+.sum{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px}
+.box{background:var(--card);border:1px solid var(--ln);border-radius:14px;padding:12px}
+.box small{color:var(--mu);display:block;font-size:13px}.box b{font-size:20px}
+.tabs{display:flex;gap:8px;margin:8px 0 12px}
+.tabs button{flex:1;padding:12px;border-radius:12px;border:1px solid var(--ln);background:var(--card);color:var(--tx);font-size:16px}
+.tabs button.on{background:var(--ac);color:var(--acx);border-color:var(--ac)}
+.row{display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--ln);border-radius:14px;padding:12px;margin-bottom:8px}
+.nm{flex:1;min-width:0}.nm b{display:block}.nm span{color:var(--mu);font-size:14px}
+.pr{text-align:right;min-width:110px}.up{color:var(--gr)}.dn{color:var(--rd)}
+.warn{color:#b26a00;font-size:12px}
+button.b{min-height:44px;padding:0 16px;border-radius:10px;border:1px solid var(--ln);background:var(--card);color:var(--tx);font-size:16px}
+button.buy{background:var(--gr);color:var(--acx);border-color:var(--gr)}
+button.sell{background:var(--rd);color:var(--acx);border-color:var(--rd)}
+.note{background:var(--card);border:1px solid var(--ln);border-radius:12px;padding:12px;color:var(--mu);font-size:14px;margin-bottom:12px}
+.sheet{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:flex-end;justify-content:center;z-index:10}
+.sheet.on{display:flex}
+.panel{background:var(--card);width:100%;max-width:520px;border-radius:20px 20px 0 0;padding:20px 20px calc(20px + env(safe-area-inset-bottom,0px))}
+.panel input{width:100%;font-size:22px;padding:10px;border-radius:10px;border:1px solid var(--ln);background:var(--bg);color:var(--tx);margin:8px 0}
+.acts{display:flex;gap:8px;margin-top:8px}.acts .b{flex:1}
+table{width:100%;border-collapse:collapse;background:var(--card);border-radius:12px;overflow:hidden}
+td,th{padding:10px;border-bottom:1px solid var(--ln);text-align:left;font-size:15px}
+.sc{overflow-x:auto}
+.sp{width:90px;cursor:pointer}@media(max-width:560px){.sp{display:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>📈 Aktiesimulator</h1>
+<div class="sum">
+ <div class="box"><small>Totalt värde</small><b id="tot">–</b></div>
+ <div class="box"><small>Kassa</small><b id="cash">–</b></div>
+ <div class="box"><small>Resultat</small><b id="res">–</b></div>
+</div>
+<div class="note" id="note">Kurserna rör sig som en simulering. Lägg in din Finnhub-nyckel under Mer för live-kurser på amerikanska aktier. För övriga aktier: tryck <b>Kurs</b> på en aktie och skriv in dagens riktiga kurs (från t.ex. Avanza eller Aktiebörsen). Aktier märkta ⚠ har bara en ungefärlig startkurs.</div>
+<div class="tabs">
+ <button data-t="m" class="on">Marknad</button><button data-t="p">Portfölj</button><button data-t="h">Historik</button><button data-t="s">Mer</button>
+</div>
+<div id="view"></div>
+</div>
+
+<div class="sheet" id="sheet"><div class="panel" id="panel"></div></div>
+
+<script>
+const START=100000;
+const DEF=[
+["AAPL","Apple","USD",275],["MSFT","Microsoft","USD",480],["NVDA","Nvidia","USD",190],["TSLA","Tesla","USD",400],
+["AMZN","Amazon","USD",230],["GOOGL","Alphabet","USD",250],
+["VOLV-B.ST","Volvo B","SEK",280],["ERIC-B.ST","Ericsson B","SEK",90],["HM-B.ST","H&M B","SEK",150],
+["INVE-B.ST","Investor B","SEK",290],["ABB.ST","ABB","SEK",600],["SEB-A.ST","SEB A","SEK",170]];
+let S=null,tab="m",open=null;
+function load(){try{S=JSON.parse(localStorage.getItem("aktsim")||"null")}catch(e){S=null}
+ if(!S||!S.stocks){S={cash:START,fx:9.5,hold:{},hist:[],stocks:{}};
+  DEF.forEach(([t,n,c,p])=>S.stocks[t]={n,c,p,p0:p,sync:false})}}
+function save(){try{localStorage.setItem("aktsim",JSON.stringify(S))}catch(e){}}
+const fx=c=>c==="SEK"?1:S.fx;
+const sek=t=>S.stocks[t].p*fx(S.stocks[t].c);
+const f=(n,d=2)=>n.toLocaleString("sv-SE",{minimumFractionDigits:d,maximumFractionDigits:d});
+const kr=n=>f(n)+" kr";
+const cls=n=>n>=0?"up":"dn";
+function total(){let t=S.cash;for(const k in S.hold)t+=sek(k)*S.hold[k].q;return t}
+function head(){const t=total();tot.textContent=kr(t);cash.textContent=kr(S.cash);
+ res.textContent=(t-START>=0?"+":"")+f(t-START)+" kr";res.className=cls(t-START)}
+function render(){head();const v=document.getElementById("view");
+ if(tab==="m")v.innerHTML=Object.entries(S.stocks).map(([t,s])=>{
+  const ch=(s.p/s.p0-1)*100;
+  return `<div class="row"><div class="nm" onclick="chart('${t}')" style="cursor:pointer"><b>${t}</b><span>${s.n}</span>${s.live?' <span class="up" style="font-size:12px">● live</span>':(s.sync?"":' <span class="warn">⚠ ej synkad</span>')}</div>
+  <div class="sp" onclick="chart('${t}')">${spark(t)}</div><div class="pr"><b>${f(s.p)} ${s.c}</b><br><span class="${cls(ch)}">${ch>=0?"▲":"▼"} ${f(Math.abs(ch))} %</span></div>
+  <button class="b" onclick="setP('${t}')">Kurs</button>
+  <button class="b buy" onclick="trade('${t}','buy')">Köp</button>
+  <button class="b sell" onclick="trade('${t}','sell')">Sälj</button></div>`}).join("");
+ else if(tab==="p"){const ks=Object.keys(S.hold);
+  v.innerHTML=ks.length?`<div class="sc"><table><tr><th>Aktie</th><th>Antal</th><th>Snitt</th><th>Värde</th><th>+/−</th></tr>`+ks.map(k=>{
+   const h=S.hold[k],val=sek(k)*h.q,d=val-h.avg*h.q;
+   return `<tr><td><b>${k}</b></td><td>${h.q}</td><td>${f(h.avg)}</td><td>${kr(val)}</td><td class="${cls(d)}">${f(d)}</td></tr>`}).join("")+`</table></div>`
+   :'<div class="note">Du äger inga aktier ännu. Gå till Marknad och köp!</div>'}
+ else if(tab==="h")v.innerHTML=S.hist.length?`<div class="sc"><table><tr><th>Tid</th><th></th><th>Aktie</th><th>Antal</th><th>Kurs (kr)</th></tr>`+
+  S.hist.slice().reverse().map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td><td>${r[3]}</td><td>${f(r[4])}</td></tr>`).join("")+`</table></div>`:'<div class="note">Inga affärer än.</div>';
+ else v.innerHTML=`<div class="box"><small>Finnhub API-nyckel (sparas bara på den här enheten)</small>
+  <input id="ki" type="password" placeholder="Klistra in nyckel" value="${KEY}" style="width:100%;font-size:18px;padding:8px;margin:6px 0">
+  <button class="b buy" onclick="saveKey()">Spara och hämta kurser</button>
+  <div id="ls" style="color:var(--mu);font-size:14px;margin-top:6px">${LSTAT}</div></div><br>
+  <div class="box"><small>Dollarkurs (USD → SEK)</small><input id="fxi" type="number" step="0.01" value="${S.fx}" style="font-size:20px;padding:8px;width:140px">
+  <button class="b" onclick="S.fx=parseFloat(fxi.value)||S.fx;save();render()">Spara</button></div><br>
+  <div class="box"><small>Lägg till egen aktie</small>
+  <input id="nt" placeholder="Ticker, t.ex. SAAB-B.ST" style="width:100%;font-size:18px;padding:8px;margin:6px 0">
+  <input id="np" type="number" step="0.01" placeholder="Aktuell kurs" style="width:48%;font-size:18px;padding:8px">
+  <select id="nc" style="font-size:18px;padding:8px"><option>SEK</option><option>USD</option></select>
+  <button class="b" onclick="addS()">Lägg till</button></div><br>
+  <button class="b" onclick="if(confirm('Nollställa allt?')){localStorage.removeItem('aktsim');load();render()}">Nollställ portföljen</button>`}
+function addS(){const t=nt.value.trim().toUpperCase(),p=parseFloat(np.value);if(!t||!p)return;
+ S.stocks[t]={n:t,c:nc.value,p,p0:p,sync:true};pushH(t);save();tab="m";setTabs();render()}
+function pushH(t){const s=S.stocks[t],h=s.h=s.h||[],n=Date.now();
+ if(h.length&&n-h[h.length-1][0]<20000){h[h.length-1][1]=s.p;return}
+ h.push([n,s.p]);if(h.length>500)h.shift()}
+function pts(h,w,ht,pad){const v=h.map(x=>x[1]),lo=Math.min(...v),hi=Math.max(...v),r=(hi-lo)||lo*0.001||1;
+ return {lo,hi,xy:h.map((x,i)=>[pad+i*(w-2*pad)/Math.max(h.length-1,1),pad+(1-(x[1]-lo)/r)*(ht-2*pad)])}}
+function spark(t){const h=S.stocks[t].h;if(!h||h.length<2)return "";
+ const {xy}=pts(h,90,34,3),up=h[h.length-1][1]>=h[0][1];
+ return `<svg viewBox="0 0 90 34" width="90" height="34"><polyline fill="none" stroke="var(${up?"--gr":"--rd"})" stroke-width="2" stroke-linejoin="round" points="${xy.map(p=>p[0].toFixed(1)+","+p[1].toFixed(1)).join(" ")}"/></svg>`}
+function chart(t){const s=S.stocks[t],h=s.h||[];
+ if(h.length<2){show(`<h2 style="margin:0">${t}</h2><p style="color:var(--mu)">Ingen kurshistorik än. Lämna appen öppen en liten stund så börjar grafen ritas.</p><div class="acts"><button class="b" onclick="hide()">Stäng</button></div>`);return}
+ const W=480,H=230,pad=14,{lo,hi,xy}=pts(h,W,H,pad),up=h[h.length-1][1]>=h[0][1],c=`var(${up?"--gr":"--rd"})`;
+ const line=xy.map(p=>p[0].toFixed(1)+","+p[1].toFixed(1)).join(" "),last=xy[xy.length-1];
+ const ch=(h[h.length-1][1]/h[0][1]-1)*100,tm=x=>new Date(x).toLocaleTimeString("sv-SE",{hour:"2-digit",minute:"2-digit"});
+ show(`<h2 style="margin:0">${t} <span style="font-weight:400;color:var(--mu);font-size:16px">${s.n}</span></h2>
+ <div style="font-size:26px;font-weight:600">${f(s.p)} ${s.c} <span class="${cls(ch)}" style="font-size:17px">${ch>=0?"▲":"▼"} ${f(Math.abs(ch))} %</span></div>
+ <svg viewBox="0 0 ${W} ${H}" width="100%" style="margin-top:8px">
+ <line x1="${pad}" x2="${W-pad}" y1="${pad}" y2="${pad}" stroke="var(--ln)"/><line x1="${pad}" x2="${W-pad}" y1="${H-pad}" y2="${H-pad}" stroke="var(--ln)"/>
+ <text x="${pad}" y="${pad-3}" fill="var(--mu)" font-size="12">${f(hi)}</text><text x="${pad}" y="${H-pad+13}" fill="var(--mu)" font-size="12">${f(lo)}</text>
+ <polyline fill="none" stroke="${c}" stroke-width="2.5" stroke-linejoin="round" points="${line}"/>
+ <circle cx="${last[0]}" cy="${last[1]}" r="4.5" fill="${c}"/></svg>
+ <div style="display:flex;justify-content:space-between;color:var(--mu);font-size:13px"><span>${tm(h[0][0])}</span><span>${h.length} mätpunkter</span><span>${tm(h[h.length-1][0])}</span></div>
+ <div class="acts"><button class="b" onclick="hide()">Stäng</button><button class="b buy" onclick="hide();trade('${t}','buy')">Köp</button><button class="b sell" onclick="hide();trade('${t}','sell')">Sälj</button></div>`)}
+function show(h){panel.innerHTML=h;sheet.classList.add("on")}
+function hide(){sheet.classList.remove("on");open=null}
+sheet.addEventListener("click",e=>{if(e.target===sheet)hide()});
+function setP(t){const s=S.stocks[t];
+ show(`<h2 style="margin:0">${t} – riktig kurs</h2><div style="color:var(--mu)">Skriv in dagens kurs i ${s.c}</div>
+ <input id="pi" type="number" step="0.01" inputmode="decimal" value="${s.p.toFixed(2)}">
+ <div class="acts"><button class="b" onclick="hide()">Avbryt</button><button class="b buy" onclick="
+ const v=parseFloat(pi.value);if(v>0){const s=S.stocks['${t}'];s.p=v;s.p0=v;s.sync=true;pushH('${t}');save();hide();render()}">Spara</button></div>`)}
+function trade(t,m){const s=S.stocks[t],own=(S.hold[t]||{q:0}).q,max=m==="buy"?Math.floor(S.cash/sek(t)):own;
+ open={t,m};
+ show(`<h2 style="margin:0">${m==="buy"?"Köp":"Sälj"} ${t}</h2>
+ <div style="color:var(--mu)">Kurs ${f(s.p)} ${s.c} · Max ${max} st${m==="buy"?"":" (du äger "+own+")"}</div>
+ <input id="qi" type="number" inputmode="numeric" min="1" value="1" oninput="est()">
+ <div id="est" style="color:var(--mu)"></div>
+ <div class="acts"><button class="b" onclick="qi.value=${max};est()">Max</button><button class="b" onclick="hide()">Avbryt</button>
+ <button class="b ${m}" onclick="exec()">Bekräfta</button></div>`);est()}
+function est(){const q=parseInt(qi.value)||0;document.getElementById("est").textContent="Summa: "+kr(q*sek(open.t))}
+function exec(){const q=parseInt(qi.value),{t,m}=open;if(!(q>0))return;const c=q*sek(t);
+ const now=new Date().toLocaleString("sv-SE",{dateStyle:"short",timeStyle:"short"});
+ if(m==="buy"){if(c>S.cash+1e-9){alert("Du har inte råd.");return}
+  const h=S.hold[t]||(S.hold[t]={q:0,avg:0});h.avg=(h.avg*h.q+c)/(h.q+q);h.q+=q;S.cash-=c}
+ else{const h=S.hold[t];if(!h||h.q<q){alert("Du äger inte så många.");return}
+  h.q-=q;S.cash+=c;if(!h.q)delete S.hold[t]}
+ S.hist.push([now,m==="buy"?"KÖP":"SÄLJ",t,q,sek(t)]);save();hide();render()}
+function setTabs(){document.querySelectorAll(".tabs button").forEach(b=>b.classList.toggle("on",b.dataset.t===tab))}
+document.querySelectorAll(".tabs button").forEach(b=>b.onclick=()=>{tab=b.dataset.t;setTabs();render()});
+let KEY="",LSTAT="Ingen nyckel inlagd.";
+try{KEY=localStorage.getItem("aktkey")||""}catch(e){}
+function saveKey(){KEY=ki.value.trim();try{localStorage.setItem("aktkey",KEY)}catch(e){}live()}
+async function live(){
+ if(!KEY){LSTAT="Ingen nyckel inlagd.";return}
+ let ok=0,fail=0,why='';
+ for(const t in S.stocks){const s=S.stocks[t];
+  if(t.endsWith(".ST")||s.c!=="USD"){continue} // gratisnivån saknar oftast svenska aktier
+  try{const r=await fetch("https://finnhub.io/api/v1/quote?symbol="+encodeURIComponent(t)+"&token="+encodeURIComponent(KEY));
+   if(!r.ok){why='Finnhub svarade med felkod '+r.status+(r.status==401||r.status==403?' (nyckeln nekades)':r.status==429?' (för många anrop, vänta en minut)':'');throw 0}const d=await r.json();
+   if(d&&d.c>0){if(!s.live)s.p0=d.pc>0?d.pc:d.c;s.p=d.c;s.live=true;s.sync=true;pushH(t);ok++}else fail++}
+  catch(e){fail++;if(!why)why='Anropet blockerades. Sidan öppnades troligen inom Claude eller från Filer-appen. Öppna den från din egen webbadress (Netlify/GitHub Pages).'}}
+ LSTAT=ok?`Live-kurser hämtade för ${ok} aktier (${new Date().toLocaleTimeString("sv-SE")}). Svenska aktier (.ST) uppdateras manuellt med Kurs-knappen.`:"Kunde inte hämta kurser: "+why;
+ save();if(tab==="s"){const e=document.getElementById("ls");if(e)e.textContent=LSTAT}else render();head()}
+setInterval(()=>{if(KEY)live()},30000);
+// små slumpmässiga kursrörelser
+setInterval(()=>{if(sheet.classList.contains("on")||tab==="s")return;
+ for(const t in S.stocks){if(S.stocks[t].live)continue;S.stocks[t].p*=1+(Math.random()-.5)*0.004;pushH(t)}save();render()},4000);
+load();render();if(KEY)live();
+</script>
+</body>
+</html>
