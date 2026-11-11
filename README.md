@@ -1,0 +1,1 @@
+# aktiesimulator
